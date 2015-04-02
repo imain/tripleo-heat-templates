@@ -633,17 +633,19 @@ resources:
           Debug: {get_param: Debug}
           ExtraConfig: {get_param: ExtraConfig}
           Flavor: {get_param: OvercloudComputeFlavor}
-          GlanceHost: {get_attr: [ControlVirtualIP, fixed_ips, 0, ip_address]}
+          GlanceHost: {get_attr: [Controller, resource.0.ip_address]}
           GlancePort: {get_param: GlancePort}
           GlanceProtocol: {get_param: GlanceProtocol}
           Image: {get_param: NovaImage}
           ImageUpdatePolicy: {get_param: ImageUpdatePolicy}
           KeyName: {get_param: KeyName}
-          KeystoneHost: {get_attr: [ControlVirtualIP, fixed_ips, 0, ip_address]}
+          MysqlHost: {get_attr: [Controller, resource.0.ip_address]}
+          KeystoneHost: {get_attr: [Controller, resource.0.ip_address]}
+          MysqlRootPassword: {get_attr: [MysqlRootPassword, value]}
           NeutronBridgeMappings: {get_param: NeutronBridgeMappings}
           NeutronEnableTunnelling: {get_param: NeutronEnableTunnelling}
           NeutronFlatNetworks: {get_param: NeutronFlatNetworks}
-          NeutronHost: {get_attr: [ControlVirtualIP, fixed_ips, 0, ip_address]}
+          NeutronHost: {get_attr: [Controller, resource.0.ip_address]}
           NeutronNetworkType: {get_param: NeutronNetworkType}
           NeutronTunnelTypes: {get_param: NeutronTunnelTypes}
           NeutronNetworkVLANRanges: {get_param: NeutronNetworkVLANRanges}
@@ -658,15 +660,15 @@ resources:
           # L3 HA and Failover is not relevant for Computes, should be removed
           NeutronAllowL3AgentFailover: {get_param: NeutronAllowL3AgentFailover}
           NeutronL3HA: {get_param: NeutronL3HA}
-          NovaApiHost: {get_attr: [ControlVirtualIP, fixed_ips, 0, ip_address]}
+          NovaApiHost: {get_attr: [Controller, resource.0.ip_address]}
           NovaComputeDriver: {get_param: NovaComputeDriver}
           NovaComputeExtraConfig: {get_param: NovaComputeExtraConfig}
           NovaComputeLibvirtType: {get_param: NovaComputeLibvirtType}
           NovaEnableRbdBackend: {get_param: NovaEnableRbdBackend}
-          NovaPublicIP: {get_attr: [PublicVirtualIP, fixed_ips, 0, ip_address]}
+          NovaPublicIP: {get_attr: [Controller, resource.0.ip_address]}
           NovaPassword: {get_param: NovaPassword}
           NtpServer: {get_param: NtpServer}
-          RabbitHost: {get_attr: [ControlVirtualIP, fixed_ips, 0, ip_address]}
+          RabbitHost: {get_attr: [Controller, resource.0.ip_address]}
           RabbitPassword: {get_param: RabbitPassword}
           RabbitUserName: {get_param: RabbitUserName}
           RabbitClientUseSSL: {get_param: RabbitClientUseSSL}
@@ -919,5 +921,5 @@ outputs:
       list_join:
       - ''
       - - http://
-        - {get_attr: [ControlVirtualIP, fixed_ips, 0, ip_address]}
+        - {get_attr: [Controller, resource.0.ip_address]}
         - :5000/v2.0/

@@ -1,0 +1,793 @@
+heat_template_version: 2014-10-16
+
+description: >
+    OpenStack controller node installed via docker containers.
+
+parameters:
+  AdminPassword:
+    default: unset
+    description: The password for the keystone admin account, used for monitoring, querying neutron etc.
+    type: string
+    hidden: true
+  AdminToken:
+    default: unset
+    description: The keystone auth secret.
+    type: string
+    hidden: true
+  CeilometerMeteringSecret:
+    default: unset
+    description: Secret shared by the ceilometer services.
+    type: string
+    hidden: true
+  CeilometerPassword:
+    default: unset
+    description: The password for the ceilometer service account.
+    type: string
+    hidden: true
+  CinderEnableIscsiBackend:
+    default: true
+    description: Whether to enable or not the Iscsi backend for Cinder
+    type: boolean
+  CinderEnableRbdBackend:
+    default: false
+    description: Whether to enable or not the Rbd backend for Cinder
+    type: boolean
+  CinderISCSIHelper:
+    default: tgtadm
+    description: The iSCSI helper to use with cinder.
+    type: string
+  CinderLVMLoopDeviceSize:
+    default: 5000
+    description: The size of the loopback file used by the cinder LVM driver.
+    type: number
+  CinderPassword:
+    default: unset
+    description: The password for the cinder service account, used by cinder-api.
+    type: string
+    hidden: true
+  CloudName:
+    default: ''
+    description: The DNS name of this cloud. E.g. ci-overcloud.tripleo.org
+    type: string
+  ControllerExtraConfig:
+    default: {}
+    description: |
+      Controller specific configuration to inject into the cluster. Same
+      structure as ExtraConfig.
+    type: json
+  ControlVirtualInterface:
+    default: 'br-ex'
+    description: Interface where virtual ip will be assigned.
+    type: string
+  Debug:
+    default: ''
+    description: Set to True to enable debugging on all services.
+    type: string
+  ExtraConfig:
+    default: {}
+    description: |
+      Additional configuration to inject into the cluster. The JSON should have
+      the following structure:
+        {"FILEKEY":
+          {"config":
+            [{"section": "SECTIONNAME",
+              "values":
+                [{"option": "OPTIONNAME",
+                  "value": "VALUENAME"
+                 }
+                ]
+             }
+            ]
+          }
+        }
+      For instance:
+        {"nova":
+          {"config":
+            [{"section": "default",
+              "values":
+                [{"option": "compute_manager",
+                  "value": "ironic.nova.compute.manager.ClusterComputeManager"
+                 }
+                ]
+             },
+             {"section": "cells",
+              "values":
+                [{"option": "driver",
+                  "value": "nova.cells.rpc_driver.CellsRPCDriver"
+                 }
+                ]
+             }
+            ]
+          }
+        }
+    type: json
+  Flavor:
+    description: Flavor for control nodes to request when deploying.
+    type: string
+    constraints:
+      - custom_constraint: nova.flavor
+  GlanceNotifierStrategy:
+    description: Strategy to use for Glance notification queue
+    type: string
+    default: noop
+  GlanceLogFile:
+    description: The filepath of the file to use for logging messages from Glance.
+    type: string
+    default: ''
+  GlancePassword:
+    default: unset
+    description: The password for the glance service account, used by the glance services.
+    type: string
+    hidden: true
+  GlancePort:
+    default: "9292"
+    description: Glance port.
+    type: string
+  GlanceProtocol:
+    default: http
+    description: Protocol to use when connecting to glance, set to https for SSL.
+    type: string
+  HeatPassword:
+    default: unset
+    description: The password for the Heat service account, used by the Heat services.
+    type: string
+    hidden: true
+  HeatStackDomainAdminPassword:
+    description: Password for heat_domain_admin user.
+    type: string
+    default: ''
+    hidden: true
+  HeatAuthEncryptionKey:
+    description: Auth encryption key for heat-engine
+    type: string
+  Image:
+    type: string
+    default: overcloud-control
+    constraints:
+      - custom_constraint: glance.image
+  ImageUpdatePolicy:
+    default: 'REBUILD_PRESERVE_EPHEMERAL'
+    description: What policy to use when reconstructing instances. REBUILD for rebuilds, REBUILD_PRESERVE_EPHEMERAL to preserve /mnt.
+    type: string
+  KeyName:
+    default: default
+    description: Name of an existing EC2 KeyPair to enable SSH access to the instances
+    type: string
+    constraints:
+      - custom_constraint: nova.keypair
+  KeystoneCACertificate:
+    default: ''
+    description: Keystone self-signed certificate authority certificate.
+    type: string
+  KeystoneSigningCertificate:
+    default: ''
+    description: Keystone certificate for verifying token validity.
+    type: string
+  KeystoneSigningKey:
+    default: ''
+    description: Keystone key for signing tokens.
+    type: string
+    hidden: true
+  KeystoneSSLCertificate:
+    default: ''
+    description: Keystone certificate for verifying token validity.
+    type: string
+  KeystoneSSLCertificateKey:
+    default: ''
+    description: Keystone key for signing tokens.
+    type: string
+    hidden: true
+  MysqlClusterUniquePart:
+    description: A unique identifier of the MySQL cluster the controller is in.
+    type: string
+    default: 'unset'  # Has to be here because of the ignored empty value bug
+    # Drop the validation: https://bugs.launchpad.net/tripleo/+bug/1405446
+    # constraints:
+    # - length: {min: 4, max: 10}
+  MysqlInnodbBufferPoolSize:
+    description: >
+        Specifies the size of the buffer pool in megabytes. Setting to
+        zero should be interpreted as "no value" and will defer to the
+        lower level default.
+    type: number
+    default: 0
+  MysqlRootPassword:
+    type: string
+    hidden: true
+    default: ''  # Has to be here because of the ignored empty value bug
+  NeutronBridgeMappings:
+    description: >
+      The OVS logical->physical bridge mappings to use. See the Neutron
+      documentation for details. Defaults to mapping br-ex - the external
+      bridge on hosts - to a physical name 'datacentre' which can be used
+      to create provider networks (and we use this for the default floating
+      network) - if changing this either use different post-install network
+      scripts or be sure to keep 'datacentre' as a mapping network name.
+    type: string
+    default: ""
+  NeutronDnsmasqOptions:
+    default: 'dhcp-option-force=26,1400'
+    description: Dnsmasq options for neutron-dhcp-agent. The default value here forces MTU to be set to 1400 to account for the gre tunnel overhead.
+    type: string
+  NeutronAgentMode:
+    default: 'dvr_snat'
+    description: Agent mode for the neutron-l3-agent on the controller hosts
+    type: string
+  NeutronL3HA: #FIXME this isn't wired in
+    default: 'False'
+    description: Whether to enable l3-agent HA
+    type: string
+  NeutronDVR:
+    default: 'False'
+    description: Whether to configure Neutron Distributed Virtual Routers
+    type: string
+  NeutronMetadataProxySharedSecret:
+    default: 'unset'
+    description: Shared secret to prevent spoofing
+    type: string
+  NeutronMechanismDrivers:
+    default: 'openvswitch'
+    description: |
+        The mechanism drivers for the Neutron tenant network. To specify multiple
+        values, use a comma separated string, like so: 'openvswitch,l2_population'
+    type: string
+  NeutronAllowL3AgentFailover:
+    default: 'True'
+    description: Allow automatic l3-agent failover
+    type: string
+  NeutronEnableTunnelling:
+    type: string
+    default: "True"
+  NeutronFlatNetworks:
+    type: string
+    default: ''
+    description: If set, flat networks to configure in neutron plugins.
+  NeutronL3HA:
+    default: 'False'
+    description: Whether to enable l3-agent HA
+    type: string
+  NeutronNetworkType:
+    default: 'gre'
+    description: The tenant network type for Neutron, either gre or vxlan.
+    type: string
+  NeutronNetworkVLANRanges:
+    default: 'datacentre'
+    description: >
+      The Neutron ML2 and OpenVSwitch vlan mapping range to support. See the
+      Neutron documentation for permitted values. Defaults to permitting any
+      VLAN on the 'datacentre' physical network (See NeutronBridgeMappings).
+    type: string
+  NeutronPassword:
+    default: unset
+    description: The password for the neutron service account, used by neutron agents.
+    type: string
+    hidden: true
+  NeutronPublicInterface:
+    default: eth0
+    description: What interface to bridge onto br-ex for network nodes.
+    type: string
+  NeutronPublicInterfaceTag:
+    default: ''
+    description: >
+      VLAN tag for creating a public VLAN. The tag will be used to
+      create an access port on the exterior bridge for each control plane node,
+      and that port will be given the IP address returned by neutron from the
+      public network. Set CONTROLEXTRA=overcloud-vlan-port.yaml when compiling
+      overcloud.yaml to include the deployment of VLAN ports to the control
+      plane.
+    type: string
+  NeutronPublicInterfaceDefaultRoute:
+    default: ''
+    description: A custom default route for the NeutronPublicInterface.
+    type: string
+  NeutronPublicInterfaceIP:
+    default: ''
+    description: A custom IP address to put onto the NeutronPublicInterface.
+    type: string
+  NeutronPublicInterfaceRawDevice:
+    default: ''
+    description: If set, the public interface is a vlan with this device as the raw device.
+    type: string
+  NeutronTunnelTypes:
+    default: 'gre'
+    description: |
+        The tunnel types for the Neutron tenant network. To specify multiple
+        values, use a comma separated string, like so: 'gre,vxlan'
+    type: string
+  NovaPassword:
+    default: unset
+    description: The password for the nova service account, used by nova-api.
+    type: string
+    hidden: true
+  NovaPublicIP:
+    type: string
+    default: ''  # Has to be here because of the ignored empty value bug
+  NtpServer:
+    type: string
+    default: ''
+  PublicVirtualInterface:
+    default: 'br-ex'
+    description: >
+        Specifies the interface where the public-facing virtual ip will be assigned.
+        This should be int_public when a VLAN is being used.
+    type: string
+  PublicVirtualIP:
+    type: string
+    default: ''  # Has to be here because of the ignored empty value bug
+  RabbitCookie:
+    type: string
+    default: ''  # Has to be here because of the ignored empty value bug
+    hidden: true
+  RabbitPassword:
+    default: guest
+    description: The password for RabbitMQ
+    type: string
+    hidden: true
+  RabbitUserName:
+    default: guest
+    description: The username for RabbitMQ
+    type: string
+  RabbitClientUseSSL:
+    default: false
+    description: >
+        Rabbit client subscriber parameter to specify
+        an SSL connection to the RabbitMQ host.
+    type: string
+  RabbitClientPort:
+    default: 5672
+    description: Set rabbit subscriber port, change this if using SSL
+    type: number
+  SnmpdReadonlyUserName:
+    default: ro_snmp_user
+    description: The user name for SNMPd with readonly rights running on all Overcloud nodes
+    type: string
+  SnmpdReadonlyUserPassword:
+    default: unset
+    description: The user password for SNMPd with readonly rights running on all Overcloud nodes
+    type: string
+    hidden: true
+  SSLCACertificate:
+    default: ''
+    description: If set, the contents of an SSL certificate authority file.
+    type: string
+  SSLCertificate:
+    default: ''
+    description: If set, the contents of an SSL certificate .crt file for encrypting SSL endpoints.
+    type: string
+    hidden: true
+  SSLKey:
+    default: ''
+    description: If set, the contents of an SSL certificate .key file for encrypting SSL endpoints.
+    type: string
+    hidden: true
+  SwiftHashSuffix:
+    default: unset
+    description: A random string to be used as a salt when hashing to determine mappings
+      in the ring.
+    hidden: true
+    type: string
+  SwiftMountCheck:
+    default: 'false'
+    description: Value of mount_check in Swift account/container/object -server.conf
+    type: boolean
+  SwiftMinPartHours:
+    type: number
+    default: 1
+    description: The minimum time (in hours) before a partition in a ring can be moved following a rebalance.
+  SwiftPartPower:
+    default: 10
+    description: Partition Power to use when building Swift rings
+    type: number
+  SwiftPassword:
+    default: unset
+    description: The password for the swift service account, used by the swift proxy
+      services.
+    hidden: true
+    type: string
+  SwiftReplicas:
+    type: number
+    default: 3
+    description: How many replicas to use in the swift rings.
+  VirtualIP:
+    type: string
+    default: ''  # Has to be here because of the ignored empty value bug
+  EnablePackageInstall:
+    default: 'false'
+    description: Set to true to enable package installation via Puppet
+    type: boolean
+  DockerSource:
+    default: imain
+    description: Registry where docker will pull packages from.  This can be upstream or a local registry.
+    type: string
+
+resources:
+
+  BootConfig:
+    type: Heat::InstallConfigAgent
+
+  Controller:
+    type: OS::Nova::Server
+    properties:
+      image: {get_param: Image}
+      image_update_policy: {get_param: ImageUpdatePolicy}
+      flavor: {get_param: Flavor}
+      key_name: {get_param: KeyName}
+      networks:
+        - network: ctlplane
+      user_data_format: SOFTWARE_CONFIG
+      user_data: { get_attr: [BootConfig, config] }
+
+  NetworkConfig:
+    type: OS::TripleO::Net::SoftwareConfig
+
+  NetworkDeployment:
+    type: OS::TripleO::SoftwareDeployment
+    properties:
+      config: {get_attr: [NetworkConfig, config_id]}
+      server: {get_resource: Controller}
+      input_values:
+        bridge_name: br-ex
+        interface_name: {get_param: NeutronPublicInterface}
+
+  ControllerDeployment:
+    type: OS::TripleO::SoftwareDeployment
+    properties:
+      config: {get_resource: ControllerConfig}
+      server: {get_resource: Controller}
+      input_values:
+
+        ADMIN_TENANT_NAME: admin
+        ADMIN_TOKEN: {get_param: AdminToken}
+        ADMIN_USER_PASSWORD: {get_param: AdminPassword}
+        DB_ROOT_PASSWORD: {get_param: MysqlRootPassword}
+        FLAT_INTERFACE: {get_param: NeutronPublicInterface}
+        GLANCE_API_SERVICE_HOST: {get_attr: [Controller, networks, ctlplane, 0]}
+        GLANCE_API_SERVICE_PORT: {get_param: GlancePort}
+        GLANCE_DB_NAME: glance
+        GLANCE_DB_PASSWORD: {get_param: GlancePassword}
+        GLANCE_DB_USER: glance
+        GLANCE_KEYSTONE_PASSWORD: {get_param: GlancePassword}
+        GLANCE_KEYSTONE_USER: glance
+        GLANCE_REGISTRY_SERVICE_HOST: {get_attr: [Controller, networks, ctlplane, 0]}
+        HOST_IP: {get_attr: [Controller, networks, ctlplane, 0]}
+        KEYSTONE_ADMIN_PASSWORD: {get_param: AdminPassword}
+        KEYSTONE_ADMIN_SERVICE_HOST: {get_attr: [Controller, networks, ctlplane, 0]}
+        KEYSTONE_ADMIN_SERVICE_PORT: 35357
+        KEYSTONE_ADMIN_TOKEN: {get_param: AdminToken}
+        KEYSTONE_AUTH_PROTOCOL: http
+        KEYSTONE_DB_PASSWORD: kolla
+        KEYSTONE_PUBLIC_SERVICE_HOST: {get_attr: [Controller, networks, ctlplane, 0]}
+        MARIADB_ROOT_PASSWORD: {get_param: MysqlRootPassword}
+        MARIADB_SERVICE_HOST: {get_attr: [Controller, networks, ctlplane, 0]}
+        MYSQL_ROOT_PASSWORD: {get_param: MysqlRootPassword}
+        NETWORK_MANAGER: nova
+        NOVA_API_SERVICE_HOST: {get_attr: [Controller, networks, ctlplane, 0]}
+        NOVA_COMPUTE_SERVICE_HOST: {get_attr: [Controller, networks, ctlplane, 0]}
+        NOVA_CONDUCTOR_SERVICE_HOST: {get_attr: [Controller, networks, ctlplane, 0]}
+        NOVA_DB_NAME: nova
+        NOVA_DB_PASSWORD: { get_param: NovaPassword }
+        NOVA_DB_USER: nova
+        NOVA_EC2_API_SERVICE_HOST: {get_attr: [Controller, networks, ctlplane, 0]}
+        NOVA_EC2_COMPUTE_SERVICE_HOST: {get_attr: [Controller, networks, ctlplane, 0]}
+        NOVA_EC2_NETWORK_SERVICE_HOST: {get_attr: [Controller, networks, ctlplane, 0]}
+        NOVA_EC2_SERVICE_HOST: {get_attr: [Controller, networks, ctlplane, 0]}
+        NOVA_KEYSTONE_PASSWORD: {get_param: NovaPassword}
+        NOVA_KEYSTONE_USER: nova
+        NOVA_NETWORK_SERVICE_HOST: {get_attr: [Controller, networks, ctlplane, 0]}
+        PASSWORD: {get_param: AdminPassword}
+        PUBLIC_INTERFACE: {get_param: NeutronPublicInterface}
+        PUBLIC_IP: {get_attr: [Controller, networks, ctlplane, 0]}
+        RABBITMQ_PASS: {get_param: RabbitPassword}
+        RABBITMQ_SERVICE_HOST: {get_attr: [Controller, networks, ctlplane, 0]}
+        RABBITMQ_USER: {get_param: RabbitUserName}
+
+# Neutron
+        neutron_enable_tunneling: {get_param: NeutronEnableTunnelling}
+        neutron_public_interface_ip: {get_param: NeutronPublicInterfaceIP}
+
+        neutron_flat_networks: {get_param: NeutronFlatNetworks}
+        neutron_metadata_proxy_shared_secret: {get_param: NeutronMetadataProxySharedSecret}
+        neutron_agent_mode: {get_param: NeutronAgentMode}
+        neutron_router_distributed: {get_param: NeutronDVR}
+        neutron_mechanism_drivers: {get_param: NeutronMechanismDrivers}
+        neutron_allow_l3agent_failover: {get_param: NeutronAllowL3AgentFailover}
+        neutron_l3_ha: {get_param: NeutronL3HA}
+        neutron_network_vlan_ranges: {get_param: NeutronNetworkVLANRanges}
+        neutron_bridge_mappings: {get_param: NeutronBridgeMappings}
+        neutron_public_interface: {get_param: NeutronPublicInterface}
+        neutron_public_interface_raw_device: {get_param: NeutronPublicInterfaceRawDevice}
+        neutron_public_interface_default_route: {get_param: NeutronPublicInterfaceDefaultRoute}
+        neutron_public_interface_tag: {get_param: NeutronPublicInterfaceTag}
+        neutron_tenant_network_type: {get_param: NeutronNetworkType}
+        neutron_tunnel_types: {get_param: NeutronTunnelTypes}
+        neutron_password: {get_param: NeutronPassword}
+        neutron_dnsmasq_options: {get_param: NeutronDnsmasqOptions}
+        neutron_dsn:
+          list_join:
+            - ''
+            - - 'mysql://neutron:unset@'
+              - {get_param: VirtualIP}
+              - '/ovs_neutron?charset=utf8'
+        neutron_url:
+          list_join:
+            - ''
+            - - 'http://'
+              - {get_param: VirtualIP}
+              - ':9696'
+        neutron_admin_auth_url:
+          list_join:
+            - ''
+            - - 'http://'
+              - {get_param: VirtualIP}
+              - ':35357/v2.0'
+
+  ControllerConfig:
+    type: OS::Heat::SoftwareConfig
+    properties:
+      group: script
+      inputs:
+        - name: ADMIN_TENANT_NAME
+        - name: ADMIN_USER_PASSWORD
+        - name: DB_ROOT_PASSWORD
+        - name: FLAT_INTERFACE
+        - name: GLANCE_API_SERVICE_HOST
+        - name: GLANCE_API_SERVICE_PORT
+        - name: GLANCE_DB_NAME
+        - name: GLANCE_DB_PASSWORD
+        - name: GLANCE_DB_USER
+        - name: GLANCE_KEYSTONE_PASSWORD
+        - name: GLANCE_KEYSTONE_USER
+        - name: GLANCE_REGISTRY_SERVICE_HOST
+        - name: HOST_IP
+        - name: KEYSTONE_ADMIN_PASSWORD
+        - name: KEYSTONE_ADMIN_SERVICE_HOST
+        - name: KEYSTONE_ADMIN_TOKEN
+        - name: KEYSTONE_AUTH_PROTOCOL
+        - name: KEYSTONE_DB_PASSWORD
+        - name: KEYSTONE_PUBLIC_SERVICE_HOST
+        - name: MARIADB_ROOT_PASSWORD
+        - name: MARIADB_SERVICE_HOST
+        - name: MYSQL_ROOT_PASSWORD
+        - name: NETWORK_MANAGER
+        - name: NOVA_API_SERVICE_HOST
+        - name: NOVA_COMPUTE_SERVICE_HOST
+        - name: NOVA_CONDUCTOR_SERVICE_HOST
+        - name: NOVA_DB_NAME
+        - name: NOVA_DB_PASSWORD
+        - name: NOVA_DB_USER
+        - name: NOVA_EC2_API_SERVICE_HOST
+        - name: NOVA_EC2_COMPUTE_SERVICE_HOST
+        - name: NOVA_EC2_NETWORK_SERVICE_HOST
+        - name: NOVA_EC2_SERVICE_HOST
+        - name: NOVA_KEYSTONE_PASSWORD
+        - name: NOVA_KEYSTONE_USER
+        - name: NOVA_NETWORK_SERVICE_HOST
+        - name: PASSWORD
+        - name: PUBLIC_INTERFACE
+        - name: PUBLIC_IP
+        - name: RABBITMQ_PASS
+        - name: RABBITMQ_SERVICE_HOST
+        - name: RABBITMQ_USER
+      config: |
+        #!/bin/bash
+        env > /etc/openstack.env
+
+  RabbitmqInstall:
+    type: OS::Heat::SoftwareDeployment
+    depends_on: ControllerConfig
+    properties:
+      config:
+        get_resource: ConfigureRabbitmq
+      server:
+        get_resource: Controller
+
+  ConfigureRabbitmq:
+    type: OS::Heat::StructuredConfig
+    properties:
+      group: atomic
+      config:
+        command: install
+        image:
+          list_join:
+            - ''
+            - - {get_param: DockerSource}
+              - '/'
+              - 'atomic-centos-rdo-rabbitmq'
+
+  MariadbInstall:
+    type: OS::Heat::SoftwareDeployment
+    depends_on: ControllerConfig
+    properties:
+      config:
+        get_resource: ConfigureMariadb
+      server:
+        get_resource: Controller
+
+  ConfigureMariadb:
+    type: OS::Heat::StructuredConfig
+    properties:
+      group: atomic
+      config:
+        command: install
+        image:
+          list_join:
+            - ''
+            - - {get_param: DockerSource}
+              - '/'
+              - 'atomic-centos-rdo-mariadb'
+
+  KeystoneInstall:
+    type: OS::Heat::SoftwareDeployment
+    depends_on: ControllerConfig
+    properties:
+      config:
+        get_resource: ConfigureKeystone
+      server:
+        get_resource: Controller
+
+  ConfigureKeystone:
+    type: OS::Heat::StructuredConfig
+    properties:
+      group: atomic
+      config:
+        command: install
+        image:
+          list_join:
+            - ''
+            - - {get_param: DockerSource}
+              - '/'
+              - 'atomic-centos-rdo-keystone'
+
+  GlanceApiInstall:
+    type: OS::Heat::SoftwareDeployment
+    depends_on: ControllerConfig
+    properties:
+      config:
+        get_resource: ConfigureGlanceApi
+      server:
+        get_resource: Controller
+
+  ConfigureGlanceApi:
+    type: OS::Heat::StructuredConfig
+    properties:
+      group: atomic
+      config:
+        command: install
+        image:
+          list_join:
+            - ''
+            - - {get_param: DockerSource}
+              - '/'
+              - 'atomic-centos-rdo-glance-api'
+
+  GlanceRegistryInstall:
+    type: OS::Heat::SoftwareDeployment
+    depends_on: ControllerConfig
+    properties:
+      config:
+        get_resource: ConfigureGlanceRegistry
+      server:
+        get_resource: Controller
+
+  ConfigureGlanceRegistry:
+    type: OS::Heat::StructuredConfig
+    properties:
+      group: atomic
+      config:
+        command: install
+        image:
+          list_join:
+            - ''
+            - - {get_param: DockerSource}
+              - '/'
+              - 'atomic-centos-rdo-glance-registry'
+
+  NovaConductorInstall:
+    type: OS::Heat::SoftwareDeployment
+    depends_on: ControllerConfig
+    properties:
+      config:
+        get_resource: ConfigureNovaConductor
+      server:
+        get_resource: Controller
+
+  ConfigureNovaConductor:
+    type: OS::Heat::StructuredConfig
+    properties:
+      group: atomic
+      config:
+        command: install
+        image:
+          list_join:
+            - ''
+            - - {get_param: DockerSource}
+              - '/'
+              - 'atomic-centos-rdo-nova-conductor'
+
+  NovaSchedulerInstall:
+    type: OS::Heat::SoftwareDeployment
+    depends_on: ControllerConfig
+    properties:
+      config:
+        get_resource: ConfigureNovaScheduler
+      server:
+        get_resource: Controller
+
+  ConfigureNovaScheduler:
+    type: OS::Heat::StructuredConfig
+    properties:
+      group: atomic
+      config:
+        command: install
+        image:
+          list_join:
+            - ''
+            - - {get_param: DockerSource}
+              - '/'
+              - 'atomic-centos-rdo-nova-scheduler'
+
+  NovaApiInstall:
+    type: OS::Heat::SoftwareDeployment
+    depends_on: ControllerConfig
+    properties:
+      config:
+        get_resource: ConfigureNovaApi
+      server:
+        get_resource: Controller
+
+  ConfigureNovaApi:
+    type: OS::Heat::StructuredConfig
+    properties:
+      group: atomic
+      config:
+        command: install
+        image:
+          list_join:
+            - ''
+            - - {get_param: DockerSource}
+              - '/'
+              - 'atomic-centos-rdo-nova-api'
+
+
+outputs:
+  ip_address:
+    description: IP address of the server in the ctlplane network
+    value: {get_attr: [Controller, networks, ctlplane, 0]}
+  hostname:
+    description: Hostname of the server
+    value: {get_attr: [Controller, name]}
+  corosync_node:
+    description: >
+      Node object in the format {ip: ..., name: ...} format that the corosync
+      element expects
+    value:
+      ip: {get_attr: [Controller, networks, ctlplane, 0]}
+      name: {get_attr: [Controller, name]}
+  hosts_entry:
+    description: >
+      Server's IP address and hostname in the /etc/hosts format
+    value:
+      str_replace:
+        template: IP HOST CLOUDNAME
+        params:
+          IP: {get_attr: [Controller, networks, ctlplane, 0]}
+          HOST: {get_attr: [Controller, name]}
+          CLOUDNAME: {get_param: CloudName}
+  nova_server_resource:
+    description: Heat resource handle for the Nova compute server
+    value:
+      {get_resource: Controller}
+  swift_device:
+    description: Swift device formatted for swift-ring-builder
+    value:
+      str_replace:
+        template: 'r1z1-IP:%PORT%/d1'
+        params:
+          IP: {get_attr: [Controller, networks, ctlplane, 0]}
+  swift_proxy_memcache:
+    description: Swift proxy-memcache value
+    value:
+      str_replace:
+        template: "IP:11211"
+        params:
+          IP: {get_attr: [Controller, networks, ctlplane, 0]}
