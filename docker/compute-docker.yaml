@@ -1,0 +1,442 @@
+heat_template_version: 2014-10-16
+
+description: >
+  OpenStack hypervisor node configured via Puppet.
+
+parameters:
+  AdminPassword:
+    default: unset
+    description: The password for the keystone admin account, used for monitoring, querying neutron etc.
+    type: string
+    hidden: true
+  AdminToken:
+    default: unset
+    description: The keystone auth secret.
+    type: string
+    hidden: true
+  CeilometerComputeAgent:
+    description: Indicates whether the Compute agent is present and expects nova-compute to be configured accordingly
+    type: string
+    default: ''
+    constraints:
+    - allowed_values: ['', Present]
+  CeilometerMeteringSecret:
+    default: unset
+    description: Secret shared by the ceilometer services.
+    type: string
+    hidden: true
+  CeilometerPassword:
+    default: unset
+    description: The password for the ceilometer service account.
+    type: string
+    hidden: true
+  Debug:
+    default: ''
+    description: Set to True to enable debugging on all services.
+    type: string
+  ExtraConfig:
+    default: {}
+    description: |
+      Additional configuration to inject into the cluster. The JSON should have
+      the following structure:
+        {"FILEKEY":
+          {"config":
+            [{"section": "SECTIONNAME",
+              "values":
+                [{"option": "OPTIONNAME",
+                  "value": "VALUENAME"
+                 }
+                ]
+             }
+            ]
+          }
+        }
+      For instance:
+        {"nova":
+          {"config":
+            [{"section": "default",
+              "values":
+                [{"option": "force_config_drive",
+                  "value": "always"
+                 }
+                ]
+             },
+             {"section": "cells",
+              "values":
+                [{"option": "driver",
+                  "value": "nova.cells.rpc_driver.CellsRPCDriver"
+                 }
+                ]
+             }
+            ]
+          }
+        }
+    type: json
+  Flavor:
+    description: Flavor for the nova compute node
+    type: string
+    constraints:
+      - custom_constraint: nova.flavor
+  GlanceHost:
+    type: string
+    default: ''  # Has to be here because of the ignored empty value bug
+  GlancePort:
+    default: "9292"
+    description: Glance port.
+    type: string
+  GlanceProtocol:
+    default: http
+    description: Protocol to use when connecting to glance, set to https for SSL.
+    type: string
+  Image:
+    type: string
+    default: overcloud-compute
+    constraints:
+      - custom_constraint: glance.image
+  ImageUpdatePolicy:
+    default: 'REBUILD_PRESERVE_EPHEMERAL'
+    description: What policy to use when reconstructing instances. REBUILD for rebuilds, REBUILD_PRESERVE_EPHEMERAL to preserve /mnt.
+    type: string
+  KeyName:
+    description: Name of an existing EC2 KeyPair to enable SSH access to the instances
+    type: string
+    default: default
+    constraints:
+      - custom_constraint: nova.keypair
+  KeystoneHost:
+    type: string
+    default: ''
+  MysqlRootPassword:
+    type: string
+    hidden: true
+    default: ''  # Has to be here because of the ignored empty value bug
+  MysqlHost:
+    type: string
+    default: ''
+  NeutronBridgeMappings:
+    description: >
+      The OVS logical->physical bridge mappings to use. See the Neutron
+      documentation for details. Defaults to mapping br-ex - the external
+      bridge on hosts - to a physical name 'datacentre' which can be used
+      to create provider networks (and we use this for the default floating
+      network) - if changing this either use different post-install network
+      scripts or be sure to keep 'datacentre' as a mapping network name.
+    type: string
+    default: ""
+  NeutronEnableTunnelling:
+    type: string
+    default: "True"
+  NeutronFlatNetworks:
+    type: string
+    default: ''
+    description: >
+      If set, flat networks to configure in neutron plugins.
+  NeutronHost:
+    type: string
+    default: ''  # Has to be here because of the ignored empty value bug
+  NeutronNetworkType:
+    type: string
+    description: The tenant network type for Neutron, either gre or vxlan.
+    default: 'gre'
+  NeutronNetworkVLANRanges:
+    default: 'datacentre'
+    description: >
+      The Neutron ML2 and OpenVSwitch vlan mapping range to support. See the
+      Neutron documentation for permitted values. Defaults to permitting any
+      VLAN on the 'datacentre' physical network (See NeutronBridgeMappings).
+    type: string
+  NeutronPassword:
+    default: unset
+    description: The password for the neutron service account, used by neutron agents.
+    type: string
+    hidden: true
+  NeutronPhysicalBridge:
+    default: ''
+    description: An OVS bridge to create for accessing external networks.
+    type: string
+  NeutronPublicInterface:
+    default: eth0
+    description: A port to add to the NeutronPhysicalBridge.
+    type: string
+  NeutronTunnelTypes:
+    type: string
+    description: |
+        The tunnel types for the Neutron tenant network. To specify multiple
+        values, use a comma separated string, like so: 'gre,vxlan'
+    default: 'gre'
+  NeutronPublicInterfaceRawDevice:
+    default: ''
+    type: string
+  NeutronDVR:
+    default: 'False'
+    type: string
+  NeutronMetadataProxySharedSecret:
+    default: 'unset'
+    description: Shared secret to prevent spoofing
+    type: string
+  NeutronMechanismDrivers:
+    default: 'openvswitch'
+    description: |
+        The mechanism drivers for the Neutron tenant network. To specify multiple
+        values, use a comma separated string, like so: 'openvswitch,l2_population'
+    type: string
+  # Not relevant for Computes, should be removed
+  NeutronAllowL3AgentFailover:
+    default: 'True'
+    description: Allow automatic l3-agent failover
+    type: string
+  # Not relevant for Computes, should be removed
+  NeutronL3HA:
+    default: 'False'
+    description: Whether to enable l3-agent HA
+    type: string
+  NeutronAgentMode:
+    default: 'dvr_snat'
+    description: Agent mode for the neutron-l3-agent on the controller hosts
+    type: string
+  NovaApiHost:
+    type: string
+    default: ''  # Has to be here because of the ignored empty value bug
+  NovaComputeDriver:
+    type: string
+    default: libvirt.LibvirtDriver
+  NovaComputeExtraConfig:
+    default: {}
+    description: |
+      NovaCompute specific configuration to inject into the cluster. Same
+      structure as ExtraConfig.
+    type: json
+  NovaComputeLibvirtType:
+    type: string
+    default: ''
+  NovaEnableRbdBackend:
+    default: false
+    description: Whether to enable or not the Rbd backend for Nova
+    type: boolean
+  NovaPassword:
+    default: unset
+    description: The password for the nova service account, used by nova-api.
+    type: string
+    hidden: true
+  NovaPublicIP:
+    type: string
+    default: ''  # Has to be here because of the ignored empty value bug
+  NtpServer:
+    type: string
+    default: ''
+  RabbitHost:
+    type: string
+    default: ''  # Has to be here because of the ignored empty value bug
+  RabbitPassword:
+    default: guest
+    description: The password for RabbitMQ
+    type: string
+    hidden: true
+  RabbitUserName:
+    default: guest
+    description: The username for RabbitMQ
+    type: string
+  RabbitClientUseSSL:
+    default: false
+    description: >
+        Rabbit client subscriber parameter to specify
+        an SSL connection to the RabbitMQ host.
+    type: string
+  RabbitClientPort:
+    default: 5672
+    description: Set rabbit subscriber port, change this if using SSL
+    type: number
+  SnmpdReadonlyUserName:
+    default: ro_snmp_user
+    description: The user name for SNMPd with readonly rights running on all Overcloud nodes
+    type: string
+  SnmpdReadonlyUserPassword:
+    default: unset
+    description: The user password for SNMPd with readonly rights running on all Overcloud nodes
+    type: string
+    hidden: true
+  EnablePackageInstall:
+    default: 'false'
+    description: Set to true to enable package installation via Puppet
+    type: boolean
+  DockerSource:
+    default: imain
+    description: Registry where docker will pull packages from.  This can be upstream or a local registry.
+    type: string
+
+resources:
+
+  boot_config:
+    type: Heat::InstallConfigAgent
+
+  Compute:
+    type: OS::Nova::Server
+    properties:
+      image: {get_param: Image}
+      image_update_policy: {get_param: ImageUpdatePolicy}
+      flavor: {get_param: Flavor}
+      key_name: {get_param: KeyName}
+      networks:
+        - network: ctlplane
+      user_data_format: SOFTWARE_CONFIG
+      user_data: { get_attr: [boot_config, config] }
+
+  NetworkConfig:
+    type: OS::TripleO::Net::SoftwareConfig
+
+  NetworkDeployment:
+    type: OS::TripleO::SoftwareDeployment
+    properties:
+      signal_transport: NO_SIGNAL
+      config: {get_attr: [NetworkConfig, config_id]}
+      server: {get_resource: Compute}
+      input_values:
+        bridge_name: br-ex
+        interface_name: {get_param: NeutronPublicInterface}
+
+  ComputeDeployment:
+    type: OS::TripleO::SoftwareDeployment
+    properties:
+      signal_transport: NO_SIGNAL
+      config: {get_resource: ComputeConfig}
+      server: {get_resource: Compute}
+      input_values:
+
+        ADMIN_TENANT_NAME: admin
+        DB_ROOT_PASSWORD: {get_param: MysqlRootPassword}
+        FLAT_INTERFACE: {get_param: NeutronPublicInterface}
+        GLANCE_API_SERVICE_HOST: {get_param: GlanceHost}
+        GLANCE_API_SERVICE_PORT: {get_param: GlancePort}
+        HOST_IP: {get_attr: [Compute, networks, ctlplane, 0]}
+        KEYSTONE_ADMIN_PASSWORD: {get_param: AdminPassword}
+        KEYSTONE_ADMIN_SERVICE_HOST: {get_param: KeystoneHost}
+        KEYSTONE_ADMIN_SERVICE_PORT: 35357
+        KEYSTONE_ADMIN_TOKEN: {get_param: AdminToken}
+        KEYSTONE_AUTH_PROTOCOL: http
+        KEYSTONE_DB_PASSWORD: kolla
+        KEYSTONE_PUBLIC_SERVICE_HOST: {get_param: KeystoneHost}
+        MARIADB_ROOT_PASSWORD: {get_param: MysqlRootPassword}
+        MARIADB_SERVICE_HOST: {get_param: MysqlHost}
+        METADATA_HOST: {get_param: NovaApiHost}
+        MYSQL_ROOT_PASSWORD: {get_param: MysqlRootPassword}
+        NETWORK_MANAGER: nova
+        NOVA_API_SERVICE_HOST: {get_param: NovaApiHost}
+        NOVA_COMPUTE_SERVICE_HOST: {get_attr: [Compute, networks, ctlplane, 0]}
+        NOVA_CONDUCTOR_SERVICE_HOST: {get_param: NovaApiHost}
+        NOVA_DB_NAME: nova
+        NOVA_DB_PASSWORD: {get_param: NovaPassword}
+        NOVA_DB_USER: nova
+        NOVA_EC2_API_SERVICE_HOST: {get_attr: [Compute, networks, ctlplane, 0]}
+        NOVA_EC2_COMPUTE_SERVICE_HOST: {get_attr: [Compute, networks, ctlplane, 0]}
+        NOVA_EC2_NETWORK_SERVICE_HOST: {get_attr: [Compute, networks, ctlplane, 0]}
+        NOVA_EC2_SERVICE_HOST: {get_attr: [Compute, networks, ctlplane, 0]}
+        NOVA_KEYSTONE_PASSWORD: {get_param: NovaPassword}
+        NOVA_KEYSTONE_USER: nova
+        NOVA_NETWORK_SERVICE_HOST: {get_attr: [Compute, networks, ctlplane, 0]}
+        PUBLIC_INTERFACE: br100
+        PUBLIC_IP: {get_attr: [Compute, networks, ctlplane, 0]}
+        RABBITMQ_SERVICE_HOST: {get_param: RabbitHost}
+
+  ComputeConfig:
+    type: OS::Heat::SoftwareConfig
+    properties:
+      group: script
+      inputs:
+        - name: ADMIN_TENANT_NAME
+        - name: DB_ROOT_PASSWORD
+        - name: FLAT_INTERFACE
+        - name: GLANCE_API_SERVICE_HOST
+        - name: GLANCE_API_SERVICE_PORT
+        - name: HOST_IP
+        - name: KEYSTONE_ADMIN_PASSWORD
+        - name: KEYSTONE_ADMIN_SERVICE_HOST
+        - name: KEYSTONE_ADMIN_SERVICE_PORT
+        - name: KEYSTONE_ADMIN_TOKEN
+        - name: KEYSTONE_AUTH_PROTOCOL
+        - name: KEYSTONE_DB_PASSWORD
+        - name: KEYSTONE_PUBLIC_SERVICE_HOST
+        - name: MARIADB_ROOT_PASSWORD
+        - name: MARIADB_SERVICE_HOST
+        - name: METADATA_HOST
+        - name: MYSQL_ROOT_PASSWORD
+        - name: NETWORK_MANAGER
+        - name: NOVA_API_SERVICE_HOST
+        - name: NOVA_COMPUTE_SERVICE_HOST
+        - name: NOVA_CONDUCTOR_SERVICE_HOST
+        - name: NOVA_DB_NAME
+        - name: NOVA_DB_PASSWORD
+        - name: NOVA_DB_USER
+        - name: NOVA_EC2_API_SERVICE_HOST
+        - name: NOVA_EC2_COMPUTE_SERVICE_HOST
+        - name: NOVA_EC2_NETWORK_SERVICE_HOST
+        - name: NOVA_EC2_SERVICE_HOST
+        - name: NOVA_KEYSTONE_PASSWORD
+        - name: NOVA_KEYSTONE_USER
+        - name: NOVA_NETWORK_SERVICE_HOST
+        - name: PUBLIC_INTERFACE
+        - name: PUBLIC_IP
+        - name: RABBITMQ_SERVICE_HOST
+      config: |
+        #!/bin/bash
+        env > /etc/openstack.env
+
+  nova_libvirt_install:
+    type: OS::Heat::SoftwareDeployment
+    depends_on: ComputeConfig
+    properties:
+      config:
+        get_resource: configure_nova_libvirt
+      server:
+        get_resource: Compute
+
+  configure_nova_libvirt:
+    type: OS::Heat::StructuredConfig
+    properties:
+      group: atomic
+      config:
+        command: install
+        image:
+          list_join:
+            - ''
+            - - {get_param: DockerSource}
+              - '/'
+              - 'atomic-centos-rdo-nova-libvirt'
+
+  nova_compute_install:
+    type: OS::Heat::SoftwareDeployment
+    depends_on: ComputeConfig
+    properties:
+      config:
+        get_resource: configure_nova_compute
+      server:
+        get_resource: Compute
+
+  configure_nova_compute:
+    type: OS::Heat::StructuredConfig
+    properties:
+      group: atomic
+      config:
+        command: install
+        image:
+          list_join:
+            - ''
+            - - {get_param: DockerSource}
+              - '/'
+              - 'atomic-centos-rdo-nova-compute'
+
+  nova_network_install:
+    type: OS::Heat::SoftwareDeployment
+    depends_on: ComputeConfig
+    properties:
+      config:
+        get_resource: configure_nova_network
+      server:
+        get_resource: Compute
+
+  configure_nova_network:
+    type: OS::Heat::StructuredConfig
+    properties:
+      group: atomic
+      config:
+        command: install
+        image: {get_input: image}
